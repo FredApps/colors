@@ -302,7 +302,7 @@ func Rec2020ToLchD50(r, g, b float64) (l, c, h float64) {
 	z := -0.001932427134004343*r + 0.029977826792829176*g + 0.7970592028516353*b
 
 	l, a, b := XyzD50ToLabD50(x, y, z)
-	return LxyToLch(l, a, b)
+	return labToLch(l, a, b)
 }
 
 // Conversion path (3 steps):
@@ -336,7 +336,7 @@ func Rec2020ToLchD65(r, g, b float64) (l, c, h float64) {
 	z := 0.028072693049087435*g + 1.0609850577107909*b
 
 	l, a, b := XyzD65ToLabD65(x, y, z)
-	return LxyToLch(l, a, b)
+	return labToLch(l, a, b)
 }
 
 // Conversion path (4 steps):
@@ -372,7 +372,7 @@ func Rec2020ToLchuvD50(r, g, b float64) (l, c, h float64) {
 	z := -0.001932427134004343*r + 0.029977826792829176*g + 0.7970592028516353*b
 
 	l, u, v := XyzD50ToLuvD50(x, y, z)
-	return LxyToLch(l, u, v)
+	return luvToLchuv(l, u, v)
 }
 
 // Conversion path (3 steps):
@@ -406,7 +406,7 @@ func Rec2020ToLchuvD65(r, g, b float64) (l, c, h float64) {
 	z := 0.028072693049087435*g + 1.0609850577107909*b
 
 	l, u, v := XyzD65ToLuvD65(x, y, z)
-	return LxyToLch(l, u, v)
+	return luvToLchuv(l, u, v)
 }
 
 // Conversion path (3 steps):
@@ -455,7 +455,7 @@ func Rec2020ToOklch(r, g, b float64) (l, c, h float64) {
 	a := 1.9779985324311684*f1 - 2.42859224204858*f2 + 0.450593709617411*f3
 	b = 0.0259040424655478*f1 + 0.7827717124575296*f2 - 0.8086757549230774*f3
 
-	return LxyToLch(l, a, b)
+	return oklabToOklch(l, a, b)
 }
 
 // Conversion path (5 steps):

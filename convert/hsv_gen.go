@@ -365,7 +365,7 @@ func HsvToLchD50(h, s, v float64) (float64, float64, float64) {
 	z := 0.013923921463169377*r + 0.09708132423141015*g + 0.7140993568158808*b
 
 	l, a, b := XyzD50ToLabD50(x, y, z)
-	return LxyToLch(l, a, b)
+	return labToLch(l, a, b)
 }
 
 // Conversion path (4 steps):
@@ -403,7 +403,7 @@ func HsvToLchD65(h, s, v float64) (float64, float64, float64) {
 	z := 0.01933081871559182*r + 0.11919477979462598*g + 0.9505321522496607*b
 
 	l, a, b := XyzD65ToLabD65(x, y, z)
-	return LxyToLch(l, a, b)
+	return labToLch(l, a, b)
 }
 
 // Conversion path (5 steps):
@@ -443,7 +443,7 @@ func HsvToLchuvD50(h, s, v float64) (float64, float64, float64) {
 	z := 0.013923921463169377*r + 0.09708132423141015*g + 0.7140993568158808*b
 
 	l, u, v := XyzD50ToLuvD50(x, y, z)
-	return LxyToLch(l, u, v)
+	return luvToLchuv(l, u, v)
 }
 
 // Conversion path (4 steps):
@@ -481,7 +481,7 @@ func HsvToLchuvD65(h, s, v float64) (float64, float64, float64) {
 	z := 0.01933081871559182*r + 0.11919477979462598*g + 0.9505321522496607*b
 
 	l, u, v := XyzD65ToLuvD65(x, y, z)
-	return LxyToLch(l, u, v)
+	return luvToLchuv(l, u, v)
 }
 
 // Conversion path (4 steps):
@@ -534,5 +534,5 @@ func HsvToOklch(h, s, v float64) (float64, float64, float64) {
 	a := 1.9779985324311684*f1 - 2.42859224204858*f2 + 0.450593709617411*f3
 	b = 0.0259040424655478*f1 + 0.7827717124575296*f2 - 0.8086757549230774*f3
 
-	return LxyToLch(l, a, b)
+	return oklabToOklch(l, a, b)
 }

@@ -575,19 +575,19 @@ var (
 		convertFunc("XyYD65", "XyzD65", opCall("XyY", "Xyz")),
 		convertFunc("XyzD65", "XyYD65", opCall("Xyz", "XyY")),
 
-		convertFunc("LabD50", "LchD50", opCall("Lxy", "Lch")),
+		convertFunc("LabD50", "LchD50", opCall("lab", "Lch")),
 		convertFunc("LchD50", "LabD50", opCall("Lch", "Lxy")),
 
-		convertFunc("LabD65", "LchD65", opCall("Lxy", "Lch")),
+		convertFunc("LabD65", "LchD65", opCall("lab", "Lch")),
 		convertFunc("LchD65", "LabD65", opCall("Lch", "Lxy")),
 
-		convertFunc("LuvD50", "LchuvD50", opCall("Lxy", "Lch")),
+		convertFunc("LuvD50", "LchuvD50", opCall("luv", "Lchuv")),
 		convertFunc("LchuvD50", "LuvD50", opCall("Lch", "Lxy")),
 
-		convertFunc("LuvD65", "LchuvD65", opCall("Lxy", "Lch")),
+		convertFunc("LuvD65", "LchuvD65", opCall("luv", "Lchuv")),
 		convertFunc("LchuvD65", "LuvD65", opCall("Lch", "Lxy")),
 
-		convertFunc("Oklab", "Oklch", opCall("Lxy", "Lch")),
+		convertFunc("Oklab", "Oklch", opCall("oklab", "Oklch")),
 		convertFunc("Oklch", "Oklab", opCall("Lch", "Lxy")),
 
 		// Generate with Matrix Ops
