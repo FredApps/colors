@@ -65,6 +65,10 @@ func HwbToHsl(h, w, b float64) (float64, float64, float64) {
 //	HWB
 //	-> HSV
 func HwbToHsv(h, w, b float64) (float64, float64, float64) {
+	if sum := w + b; sum >= 1 {
+		return h, 0, w / sum
+	}
+
 	v := 1 - b
 
 	if v == 0 {

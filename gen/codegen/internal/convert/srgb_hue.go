@@ -4,8 +4,8 @@ import "math"
 
 // Conversion path (1 steps):
 //
-//	HSL
-//	-> HWB
+//	sRGB
+//	-> HSL
 func SrgbToHsl(r, g, b float64) (h, s, l float64) {
 	max := max(r, g, b)
 	min := min(r, g, b)
@@ -13,7 +13,13 @@ func SrgbToHsl(r, g, b float64) (h, s, l float64) {
 	l = (min + max) * 0.5
 
 	delta := max - min
-	if delta == 0 {
+	// Matrix and transfer-function roundoff can give a neutral color a few
+	// ulps of chroma. Near white, the saturation denominator magnifies that
+	// noise. Compare relative chroma before dividing by that denominator;
+	// scaling by the channel magnitude preserves very dark saturated colors.
+	const neutralTolerance = 32 * 0x1p-52 // 32 binary64 machine epsilons.
+	scale := math.Max(math.Abs(max), math.Abs(min))
+	if delta == 0 || delta/scale <= neutralTolerance {
 		return 0, 0, l
 	}
 
