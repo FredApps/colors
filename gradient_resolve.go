@@ -18,6 +18,11 @@ import (
 )
 
 func resolveStops(stops []GradientStop, mixer Mixer) []GradientStop {
+	// Stops may come from another gradient. Recompute all private metadata
+	// from their public colors and offsets with this gradient's mixer.
+	for i := range stops {
+		stops[i] = GradientStop{Color: stops[i].Color, Offset: stops[i].Offset}
+	}
 	resolveStopOffsets(stops)
 	convertStopColors(stops, mixer.Space())
 	resolved := resolveHints(stops, mixer)
@@ -102,6 +107,10 @@ func resolveStopOffsets(stops []GradientStop) {
 }
 
 func resolveHints(stops []GradientStop, mixer Mixer) []GradientStop {
+	if len(stops) < 2 {
+		return stops
+	}
+
 	resolved := make([]GradientStop, 0, len(stops))
 	resolved = append(resolved, stops[0])
 
@@ -140,10 +149,17 @@ func resolveHint(dst []GradientStop, left, hint, right GradientStop, mixer Mixer
 		return dst
 	}
 
+	segment := &gradientHint{left: left.Color, right: right.Color}
+	hint.hint = segment
+
 	if nearlyEqual(leftDist, 0.0) {
 		hint.Color = right.Color
+		hint.weight = 1
 		return append(dst, hint)
 	}
+
+	dst[len(dst)-1].hint = segment
+	dst[len(dst)-1].weight = 0
 
 	if nearlyEqual(rightDist, 0.0) {
 		hint.Color = left.Color
@@ -182,6 +198,8 @@ func resolveHint(dst []GradientStop, left, hint, right GradientStop, mixer Mixer
 		}
 
 		stops[i].Color = mixer.Mix(left.Color, right.Color, weighting)
+		stops[i].hint = segment
+		stops[i].weight = weighting
 
 		dst = append(dst, stops[i])
 	}

@@ -8,6 +8,15 @@ type GradientStop struct {
 	Offset float64
 
 	invRange float64
+
+	// Hinted segments interpolate weights between the original color pair,
+	// rather than selecting a new hue path between the synthetic stop colors.
+	hint   *gradientHint
+	weight float64
+}
+
+type gradientHint struct {
+	left, right Color
 }
 
 // HasOffset reports whether the stop has an explicit offset.

@@ -15,6 +15,9 @@ const (
 )
 
 // Gradient stores a mixer and color stops for color interpolation.
+// An empty gradient, including the zero value, returns an invalid zero Color
+// when sampled. A single color stop produces a constant gradient in the
+// interpolation space.
 type Gradient struct {
 	mixer Mixer
 
@@ -111,6 +114,10 @@ func (g Gradient) AtSpread(t float64, spread Spread) Color {
 }
 
 func (g Gradient) at(t float64) Color {
+	if len(g.stops) == 0 {
+		return Color{}
+	}
+
 	i := g.findStop(t)
 
 	if i == 0 {
@@ -125,6 +132,25 @@ func (g Gradient) at(t float64) Color {
 	b := &g.stops[i]
 
 	seg := (t - a.Offset) * a.invRange
+
+	if a.hint != nil {
+		endWeight := 1.0
+		if b.hint == a.hint {
+			endWeight = b.weight
+		}
+		// A hint at an endpoint is a hard transition, leaving a constant
+		// color on the remaining interval (even with longer hue interpolation).
+		if a.weight == endWeight {
+			if a.weight == 0 {
+				return a.hint.left
+			}
+			if a.weight == 1 {
+				return a.hint.right
+			}
+		}
+		weight := a.weight + (endWeight-a.weight)*seg
+		return g.mixer.UnsafeMix(a.hint.left, a.hint.right, weight)
+	}
 
 	return g.mixer.UnsafeMix(a.Color, b.Color, seg)
 }
