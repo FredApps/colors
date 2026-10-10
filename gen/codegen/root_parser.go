@@ -18,8 +18,10 @@ func genRootPkgParser(ctx *Context, w *writer.GoWriter) {
 	w.LineWriteln("var buf [", ctx.MaxCssNameLength+1, "]byte")
 	w.LineWriteln("n := copy(buf[:], p.t.Text())")
 	w.LineWriteln("ascii.ToLowerBytes(buf[:n])")
+
 	w.Separate()
-	w.LineWriteln("p.t.Next()")
+	w.LineWriteln("start, end := p.t.TokenStart(), p.t.TokenEnd()")
+	w.LineWriteln("p.next()")
 
 	w.Separate()
 	w.Switch("string(buf[:n])")
@@ -36,7 +38,7 @@ func genRootPkgParser(ctx *Context, w *writer.GoWriter) {
 
 			switch s.ParseKind {
 			case model.Parse01:
-				w.Return("p.parseColorSpace01(originColor, ", ctx.SpacePkg.Join(s.Name), ", ", ctx.SpacePkg.Join(chIdentType+s.ChannelIdentFlagsName()), ")")
+				w.Return("p.parseColorSpace01(originColor, ", ctx.SpacePkg.Join(s.Name), ", ", ctx.SpacePkg.Join(chIdentSetType+s.ChannelIdentFlagsName()), ")")
 
 			case model.ParseLabLike:
 				scale := s.Channels[1].Max
@@ -55,7 +57,10 @@ func genRootPkgParser(ctx *Context, w *writer.GoWriter) {
 		}
 	}
 	w.Default()
-	w.Return("Color{}, errUnknownColorSpace")
+	w.LineWriteln("p.setErr(errInvalidColor)")
+	w.LineWriteln(`p.setErrMsg("unknown color space")`)
+	w.LineWriteln("p.setErrTextAt(start, end)")
+	w.Return("Color{}, p.fail()")
 	w.End()
 	w.End()
 }

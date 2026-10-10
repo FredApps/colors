@@ -28,7 +28,10 @@ func GenerateSpacePkg(ctx *Context) {
 	})
 
 	emitGoFile(ctx, pkg, w, "channel", func(w *writer.GoWriter) {
-		w.Import("/internal/ascii")
+		w.Import(
+			"strconv",
+			"/internal/ascii",
+		)
 		genSpacePkgChannelIdent(ctx, w)
 	})
 

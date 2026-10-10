@@ -3,53 +3,71 @@
 package space
 
 import (
+	"strconv"
+
 	"github.com/thmalt/colors/internal/ascii"
 )
 
 const MaxChannelCount = 4
 
-type ChIdentFlags uint32
-
-const (
-	ChIdentAlpha     ChIdentFlags = 1 << iota // alpha
-	ChIdentA                                  // a
-	ChIdentB                                  // b
-	ChIdentC                                  // c
-	ChIdentG                                  // g
-	ChIdentH                                  // h
-	ChIdentL                                  // l
-	ChIdentR                                  // r
-	ChIdentS                                  // s
-	ChIdentU                                  // u
-	ChIdentV                                  // v
-	ChIdentW                                  // w
-	ChIdentX                                  // x
-	ChIdentY                                  // y
-	ChIdentZ                                  // z
-	ChIdentLuminance                          // luminance
+type (
+	ChIdent    uint8
+	ChIdentSet uint32
 )
 
 const (
-	ChIdentFlagsRGB         = ChIdentR | ChIdentG | ChIdentB | ChIdentAlpha         // r, g, b, alpha
-	ChIdentFlagsXYZ         = ChIdentX | ChIdentY | ChIdentZ | ChIdentAlpha         // x, y, z, alpha
-	ChIdentFlagsXYLuminance = ChIdentX | ChIdentY | ChIdentLuminance | ChIdentAlpha // x, y, luminance, alpha
-	ChIdentFlagsLAB         = ChIdentL | ChIdentA | ChIdentB | ChIdentAlpha         // l, a, b, alpha
-	ChIdentFlagsLCH         = ChIdentL | ChIdentC | ChIdentH | ChIdentAlpha         // l, c, h, alpha
-	ChIdentFlagsLUV         = ChIdentL | ChIdentU | ChIdentV | ChIdentAlpha         // l, u, v, alpha
-	ChIdentFlagsHSL         = ChIdentH | ChIdentS | ChIdentL | ChIdentAlpha         // h, s, l, alpha
-	ChIdentFlagsHSV         = ChIdentH | ChIdentS | ChIdentV | ChIdentAlpha         // h, s, v, alpha
-	ChIdentFlagsHWB         = ChIdentH | ChIdentW | ChIdentB | ChIdentAlpha         // h, w, b, alpha
+	ChIdentNone      ChIdent = iota //
+	ChIdentAlpha                    // alpha
+	ChIdentA                        // a
+	ChIdentB                        // b
+	ChIdentC                        // c
+	ChIdentG                        // g
+	ChIdentH                        // h
+	ChIdentL                        // l
+	ChIdentR                        // r
+	ChIdentS                        // s
+	ChIdentU                        // u
+	ChIdentV                        // v
+	ChIdentW                        // w
+	ChIdentX                        // x
+	ChIdentY                        // y
+	ChIdentZ                        // z
+	ChIdentLuminance                // luminance
 )
 
-func (f ChIdentFlags) Has(flags ChIdentFlags) bool {
-	return f&flags == flags
+const (
+	ChIdentSetAlpha       ChIdentSet = 1 << ChIdentAlpha                                                 // alpha
+	ChIdentSetHSL         ChIdentSet = 1<<ChIdentH | 1<<ChIdentS | 1<<ChIdentL | 1<<ChIdentAlpha         // h, s, l, alpha
+	ChIdentSetHSV         ChIdentSet = 1<<ChIdentH | 1<<ChIdentS | 1<<ChIdentV | 1<<ChIdentAlpha         // h, s, v, alpha
+	ChIdentSetHWB         ChIdentSet = 1<<ChIdentH | 1<<ChIdentW | 1<<ChIdentB | 1<<ChIdentAlpha         // h, w, b, alpha
+	ChIdentSetLAB         ChIdentSet = 1<<ChIdentL | 1<<ChIdentA | 1<<ChIdentB | 1<<ChIdentAlpha         // l, a, b, alpha
+	ChIdentSetLCH         ChIdentSet = 1<<ChIdentL | 1<<ChIdentC | 1<<ChIdentH | 1<<ChIdentAlpha         // l, c, h, alpha
+	ChIdentSetLUV         ChIdentSet = 1<<ChIdentL | 1<<ChIdentU | 1<<ChIdentV | 1<<ChIdentAlpha         // l, u, v, alpha
+	ChIdentSetRGB         ChIdentSet = 1<<ChIdentR | 1<<ChIdentG | 1<<ChIdentB | 1<<ChIdentAlpha         // r, g, b, alpha
+	ChIdentSetXYZ         ChIdentSet = 1<<ChIdentX | 1<<ChIdentY | 1<<ChIdentZ | 1<<ChIdentAlpha         // x, y, z, alpha
+	ChIdentSetXYLuminance ChIdentSet = 1<<ChIdentX | 1<<ChIdentY | 1<<ChIdentLuminance | 1<<ChIdentAlpha // x, y, luminance, alpha
+)
+
+func (ch ChIdent) Set() ChIdentSet {
+	return 1 << (ch & 31)
 }
 
-func (f ChIdentFlags) String() string {
-	switch f {
-	case 0:
-		return "<nil>"
+func (s ChIdentSet) Has(ch ChIdent) bool {
+	return s&(1<<(ch&31)) != 0
+}
 
+func (s ChIdentSet) HasAny(o ChIdentSet) bool {
+	return s&o != 0
+}
+
+func (s ChIdentSet) HasAll(o ChIdentSet) bool {
+	return s&o == o
+}
+
+func (ch ChIdent) String() string {
+	switch ch {
+	case ChIdentNone:
+		return ""
 	case ChIdentAlpha:
 		return "alpha"
 	case ChIdentA:
@@ -84,14 +102,11 @@ func (f ChIdentFlags) String() string {
 		return "luminance"
 
 	default:
-		if f&(f-1) == 0 {
-			return "<unknown>"
-		}
-		return "<multi flags>"
+		return "ChIdent(" + strconv.Itoa(int(ch)) + ")"
 	}
 }
 
-func LookupChIdentFlags(ident string) ChIdentFlags {
+func LookupChIdentFlags(ident string) ChIdent {
 	switch len(ident) {
 	case 1:
 		switch ident[0] | ('a' - 'A') {
@@ -136,42 +151,42 @@ func LookupChIdentFlags(ident string) ChIdentFlags {
 	return 0
 }
 
-func (s Space) ChIdentFlags() ChIdentFlags {
+func (s Space) ChIdentSet() ChIdentSet {
 	switch s {
 	case Srgb, LinearSrgb, DisplayP3, LinearDisplayP3,
 		A98, LinearA98, ProPhoto, LinearProPhoto,
 		Rec2020, Rec2020OETF, LinearRec2020, LinearRec2100,
 		Rec2100PQ, Rec2100HLG:
-		return ChIdentFlagsRGB
+		return ChIdentSetRGB
 	case XyzD50, XyzD65, XyzAbsD65:
-		return ChIdentFlagsXYZ
+		return ChIdentSetXYZ
 	case XyYD50, XyYD65:
-		return ChIdentFlagsXYLuminance
+		return ChIdentSetXYLuminance
 	case LabD50, LabD65, Oklab:
-		return ChIdentFlagsLAB
+		return ChIdentSetLAB
 	case LchD50, LchD65, LchuvD50, LchuvD65,
 		Oklch:
-		return ChIdentFlagsLCH
+		return ChIdentSetLCH
 	case LuvD50, LuvD65:
-		return ChIdentFlagsLUV
+		return ChIdentSetLUV
 	case Hsl:
-		return ChIdentFlagsHSL
+		return ChIdentSetHSL
 	case Hsv:
-		return ChIdentFlagsHSV
+		return ChIdentSetHSV
 	case Hwb:
-		return ChIdentFlagsHWB
+		return ChIdentSetHWB
 	default:
 		return 0
 	}
 }
 
-func (s Space) ChIndex(flag ChIdentFlags) int {
+func (s Space) ChIndex(ch ChIdent) int {
 	switch s {
 	case Srgb, LinearSrgb, DisplayP3, LinearDisplayP3,
 		A98, LinearA98, ProPhoto, LinearProPhoto,
 		Rec2020, Rec2020OETF, LinearRec2020, LinearRec2100,
 		Rec2100PQ, Rec2100HLG:
-		switch flag {
+		switch ch {
 		case ChIdentR:
 			return 0
 		case ChIdentG:
@@ -180,7 +195,7 @@ func (s Space) ChIndex(flag ChIdentFlags) int {
 			return 2
 		}
 	case XyzD50, XyzD65, XyzAbsD65:
-		switch flag {
+		switch ch {
 		case ChIdentX:
 			return 0
 		case ChIdentY:
@@ -189,7 +204,7 @@ func (s Space) ChIndex(flag ChIdentFlags) int {
 			return 2
 		}
 	case XyYD50, XyYD65:
-		switch flag {
+		switch ch {
 		case ChIdentX:
 			return 0
 		case ChIdentY:
@@ -198,7 +213,7 @@ func (s Space) ChIndex(flag ChIdentFlags) int {
 			return 2
 		}
 	case LabD50, LabD65, Oklab:
-		switch flag {
+		switch ch {
 		case ChIdentL:
 			return 0
 		case ChIdentA:
@@ -208,7 +223,7 @@ func (s Space) ChIndex(flag ChIdentFlags) int {
 		}
 	case LchD50, LchD65, LchuvD50, LchuvD65,
 		Oklch:
-		switch flag {
+		switch ch {
 		case ChIdentL:
 			return 0
 		case ChIdentC:
@@ -217,7 +232,7 @@ func (s Space) ChIndex(flag ChIdentFlags) int {
 			return 2
 		}
 	case LuvD50, LuvD65:
-		switch flag {
+		switch ch {
 		case ChIdentL:
 			return 0
 		case ChIdentU:
@@ -226,7 +241,7 @@ func (s Space) ChIndex(flag ChIdentFlags) int {
 			return 2
 		}
 	case Hsl:
-		switch flag {
+		switch ch {
 		case ChIdentH:
 			return 0
 		case ChIdentS:
@@ -235,7 +250,7 @@ func (s Space) ChIndex(flag ChIdentFlags) int {
 			return 2
 		}
 	case Hsv:
-		switch flag {
+		switch ch {
 		case ChIdentH:
 			return 0
 		case ChIdentS:
@@ -244,7 +259,7 @@ func (s Space) ChIndex(flag ChIdentFlags) int {
 			return 2
 		}
 	case Hwb:
-		switch flag {
+		switch ch {
 		case ChIdentH:
 			return 0
 		case ChIdentW:
@@ -254,7 +269,7 @@ func (s Space) ChIndex(flag ChIdentFlags) int {
 		}
 	}
 
-	if flag == ChIdentAlpha {
+	if ch == ChIdentAlpha {
 		if n := s.ChannelCount(); n > 0 {
 			return n
 		}

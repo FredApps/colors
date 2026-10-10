@@ -7,12 +7,18 @@ import (
 	"github.com/thmalt/colors/gen/codegen/writer"
 )
 
-const chIdentType = "ChIdentFlags"
+const (
+	chIdentType    = "ChIdent"
+	chIdentSetType = "ChIdentSet"
+)
 
 func genSpacePkgChannelIdent(ctx *Context, w *writer.GoWriter) {
 	identMap := make(map[string]string)
 	sub := w.SubWriter()
 	groups := newGroupSpace()
+
+	none := "none"
+	identMap[none] = chIdentName(none)
 
 	alpha := "alpha"
 	identMap[alpha] = chIdentName(alpha)
@@ -27,41 +33,49 @@ func genSpacePkgChannelIdent(ctx *Context, w *writer.GoWriter) {
 			if j > 0 {
 				sub.Write(" | ")
 			}
-			sub.Write(chId)
+			sub.Write("1<<", chId)
 		}
-		sub.Write(" | ", identMap[alpha])
-		groups.AppendExtra(string(sub.Bytes()), s.ChannelCount(), i, s, chIdentType+s.ChannelIdentFlagsName())
+		sub.Write(" | ", "1<<", identMap[alpha])
+		groups.AppendExtra(string(sub.Bytes()), s.ChannelCount(), i, s, chIdentSetType+s.ChannelIdentFlagsName())
 	}
 
 	flagsGroups := groups.Slice()
 
 	var identList = make([]string, 0, len(identMap))
-	identList = append(identList, alpha)
+	identList = append(identList, none, alpha)
 
 	for k := range identMap {
-		if k != alpha {
+		if k != alpha && k != none {
 			identList = append(identList, k)
 		}
 	}
 
-	slices.SortFunc(identList[1:], func(a, b string) int {
+	slices.SortFunc(identList[2:], func(a, b string) int {
 		if n := len(a) - len(b); n != 0 {
 			return n
 		}
 		return strings.Compare(a, b)
 	})
 
+	bitLen := uintBits(max(32, len(identList)))
+
 	w.Separate()
 	w.LineWriteln("const MaxChannelCount = ", ctx.MaxChannelCount)
 	w.Separate()
-	w.LineWriteln("type ", chIdentType, " uint", uintBits(max(32, len(identList))))
+	w.BeginGroup("type")
+	w.LineWriteln(chIdentType, " uint8")
+	w.LineWriteln(chIdentSetType, " uint", bitLen)
+	w.End()
 
 	w.Separate()
 	w.BeginGroup("const")
 	for i, ident := range identList {
 		w.LineWrite(identMap[ident])
 		if i == 0 {
-			w.Write(" ", chIdentType, " = 1 << iota")
+			w.Write(" ", chIdentType, " = iota")
+		}
+		if ident == none {
+			ident = ""
 		}
 		w.InlineComment(ident)
 	}
@@ -69,7 +83,18 @@ func genSpacePkgChannelIdent(ctx *Context, w *writer.GoWriter) {
 
 	w.Separate()
 	w.BeginGroup("const")
-	for _, group := range flagsGroups {
+	w.LineWrite(chIdentSetType, toUpperCaseFirstChar(alpha), " ", chIdentSetType, " = 1 << ", identMap[alpha])
+	w.InlineComment(alpha)
+
+	flagsGroupsSorted := slices.Clone(flagsGroups)
+	slices.SortStableFunc(flagsGroupsSorted, func(a, b groupSpaceValue) int {
+		if n := len(a.Extra) - len(b.Extra); n != 0 {
+			return n
+		}
+		return strings.Compare(a.Extra, b.Extra)
+	})
+
+	for _, group := range flagsGroupsSorted {
 		sub.Reset()
 		for i, ident := range group.Spaces[0].ChannelIdent() {
 			if i > 0 {
@@ -79,13 +104,16 @@ func genSpacePkgChannelIdent(ctx *Context, w *writer.GoWriter) {
 		}
 		sub.Write(", ", alpha)
 
-		w.LineWrite(group.Extra, " = ", group.Key)
+		w.LineWrite(group.Extra, " ", chIdentSetType, " = ", group.Key)
 		w.InlineComment(sub.Bytes())
 	}
 	w.End()
 
 	var identLenMap = make(map[int][]string)
 	for ident := range identMap {
+		if ident == none {
+			continue
+		}
 		identLenMap[len(ident)] = append(identLenMap[len(ident)], ident)
 	}
 	var identLenList = make([]int, 0, len(identLenMap))
@@ -95,38 +123,61 @@ func genSpacePkgChannelIdent(ctx *Context, w *writer.GoWriter) {
 	slices.Sort(identLenList)
 
 	w.Separate()
-	// func (f ChIdentFlags) Has(flags ChIdentFlags) bool
-	w.Method("f "+chIdentType, "Has")
-	w.FuncParams("flags ", chIdentType)
-	w.FuncResults("bool")
+	// func (ch ChIdent) Set() ChIdentSet
+	w.Method("ch "+chIdentType, "Set")
+	w.FuncResults(chIdentSetType)
 	w.FuncBody()
-	w.Return("f&flags == flags")
+	w.Return("1 << (ch&", bitLen-1, ')')
 	w.End()
 
 	w.Separate()
-	// func (f ChIdentFlags) String() string
-	w.Method("f "+chIdentType, "String")
+	// func (s ChIdentSet) Has(ch ChIdent) bool
+	w.Method("s "+chIdentSetType, "Has")
+	w.FuncParams("ch ", chIdentType)
+	w.FuncResults("bool")
+	w.FuncBody()
+	w.Return("s&(1<<(ch&", bitLen-1, ")) != 0")
+	w.End()
+
+	w.Separate()
+	// func (s ChIdentSet) HasAny(o ChIdentSet) bool
+	w.Method("s "+chIdentSetType, "HasAny")
+	w.FuncParams("o ", chIdentSetType)
+	w.FuncResults("bool")
+	w.FuncBody()
+	w.Return("s&o != 0")
+	w.End()
+
+	w.Separate()
+	// func (s ChIdentSet) HasAll(o ChIdentSet) bool
+	w.Method("s "+chIdentSetType, "HasAll")
+	w.FuncParams("o ", chIdentSetType)
+	w.FuncResults("bool")
+	w.FuncBody()
+	w.Return("s&o == o")
+	w.End()
+
+	w.Separate()
+	// func (ch ChIdent) String() string
+	w.Method("ch "+chIdentType, "String")
 	w.FuncResults("string")
 	w.FuncBody()
-	w.Switch("f")
-	w.Case("0")
-	w.Return(`"<nil>"`)
-	w.Separate()
+	w.Switch("ch")
 	for _, ident := range identList {
 		w.Case(identMap[ident])
+		if ident == none {
+			ident = ""
+		}
 		w.Return('"', ident, '"')
 	}
 	w.Separate()
 	w.Default()
-	w.If("f&(f-1) == 0")
-	w.Return(`"<unknown>"`)
-	w.End()
-	w.Return(`"<multi flags>"`)
+	w.Return(`"`, chIdentType, `(" + strconv.Itoa(int(ch)) + ")"`)
 	w.End()
 	w.End()
 
 	w.Separate()
-	// func LookupChIdentFlags(ident string) ChIdentFlags
+	// func LookupChIdentFlags(ident string) ChIdent
 	w.Func("LookupChIdentFlags")
 	w.FuncParams("ident string")
 	w.FuncResults(chIdentType)
@@ -160,9 +211,9 @@ func genSpacePkgChannelIdent(ctx *Context, w *writer.GoWriter) {
 	w.End()
 
 	w.Separate()
-	// func (s Space) ChIdentFlags() ChIdentFlags
-	w.Method("s Space", "ChIdentFlags")
-	w.FuncResults(chIdentType)
+	// func (s Space) ChIdentSet() ChIdentSet
+	w.Method("s Space", chIdentSetType)
+	w.FuncResults(chIdentSetType)
 	w.FuncBody()
 	w.Switch("s")
 	for _, group := range flagsGroups {
@@ -189,7 +240,7 @@ func genSpacePkgChannelIdent(ctx *Context, w *writer.GoWriter) {
 	groups.Reset()
 	for i, s := range ctx.BuiltSpaces {
 		sub.Reset()
-		sub.Switch("flag")
+		sub.Switch("ch")
 		for j, ident := range s.ChannelIdent() {
 			sub.Case(identMap[strings.ToLower(ident)])
 			sub.Return(j)
@@ -199,9 +250,9 @@ func genSpacePkgChannelIdent(ctx *Context, w *writer.GoWriter) {
 	}
 
 	w.Separate()
-	// func (s Space) ChIndex(flag ChIdentFlags) int
+	// func (s Space) ChIndex(ch ChIdent) int
 	w.Method("s Space", "ChIndex")
-	w.FuncParams("flag ", chIdentType)
+	w.FuncParams("ch ", chIdentType)
 	w.FuncResults("int")
 	w.FuncBody()
 	w.Switch("s")
@@ -223,7 +274,7 @@ func genSpacePkgChannelIdent(ctx *Context, w *writer.GoWriter) {
 	}
 	w.End()
 	w.Separate()
-	w.If("flag == ", identMap[alpha])
+	w.If("ch == ", identMap[alpha])
 	w.If("n := s.ChannelCount(); n > 0")
 	w.Return("n")
 	w.End()

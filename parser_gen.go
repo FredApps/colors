@@ -12,47 +12,48 @@ func (p *parser) parseColorSpace(originColor Color) (Color, error) {
 	n := copy(buf[:], p.t.Text())
 	ascii.ToLowerBytes(buf[:n])
 
-	p.t.Next()
+	start, end := p.t.TokenStart(), p.t.TokenEnd()
+	p.next()
 
 	switch string(buf[:n]) {
 	case "srgb":
-		return p.parseColorSpace01(originColor, space.Srgb, space.ChIdentFlagsRGB)
+		return p.parseColorSpace01(originColor, space.Srgb, space.ChIdentSetRGB)
 	case "srgb-linear":
-		return p.parseColorSpace01(originColor, space.LinearSrgb, space.ChIdentFlagsRGB)
+		return p.parseColorSpace01(originColor, space.LinearSrgb, space.ChIdentSetRGB)
 	case "display-p3":
-		return p.parseColorSpace01(originColor, space.DisplayP3, space.ChIdentFlagsRGB)
+		return p.parseColorSpace01(originColor, space.DisplayP3, space.ChIdentSetRGB)
 	case "display-p3-linear":
-		return p.parseColorSpace01(originColor, space.LinearDisplayP3, space.ChIdentFlagsRGB)
+		return p.parseColorSpace01(originColor, space.LinearDisplayP3, space.ChIdentSetRGB)
 	case "a98-rgb":
-		return p.parseColorSpace01(originColor, space.A98, space.ChIdentFlagsRGB)
+		return p.parseColorSpace01(originColor, space.A98, space.ChIdentSetRGB)
 	case "a98-rgb-linear":
-		return p.parseColorSpace01(originColor, space.LinearA98, space.ChIdentFlagsRGB)
+		return p.parseColorSpace01(originColor, space.LinearA98, space.ChIdentSetRGB)
 	case "prophoto-rgb":
-		return p.parseColorSpace01(originColor, space.ProPhoto, space.ChIdentFlagsRGB)
+		return p.parseColorSpace01(originColor, space.ProPhoto, space.ChIdentSetRGB)
 	case "prophoto-rgb-linear":
-		return p.parseColorSpace01(originColor, space.LinearProPhoto, space.ChIdentFlagsRGB)
+		return p.parseColorSpace01(originColor, space.LinearProPhoto, space.ChIdentSetRGB)
 	case "rec2020":
-		return p.parseColorSpace01(originColor, space.Rec2020, space.ChIdentFlagsRGB)
+		return p.parseColorSpace01(originColor, space.Rec2020, space.ChIdentSetRGB)
 	case "rec2020-oetf":
-		return p.parseColorSpace01(originColor, space.Rec2020OETF, space.ChIdentFlagsRGB)
+		return p.parseColorSpace01(originColor, space.Rec2020OETF, space.ChIdentSetRGB)
 	case "rec2020-linear":
-		return p.parseColorSpace01(originColor, space.LinearRec2020, space.ChIdentFlagsRGB)
+		return p.parseColorSpace01(originColor, space.LinearRec2020, space.ChIdentSetRGB)
 	case "rec2100-linear":
-		return p.parseColorSpace01(originColor, space.LinearRec2100, space.ChIdentFlagsRGB)
+		return p.parseColorSpace01(originColor, space.LinearRec2100, space.ChIdentSetRGB)
 	case "rec2100-pq":
-		return p.parseColorSpace01(originColor, space.Rec2100PQ, space.ChIdentFlagsRGB)
+		return p.parseColorSpace01(originColor, space.Rec2100PQ, space.ChIdentSetRGB)
 	case "rec2100-hlg":
-		return p.parseColorSpace01(originColor, space.Rec2100HLG, space.ChIdentFlagsRGB)
+		return p.parseColorSpace01(originColor, space.Rec2100HLG, space.ChIdentSetRGB)
 	case "xyz-d50":
-		return p.parseColorSpace01(originColor, space.XyzD50, space.ChIdentFlagsXYZ)
+		return p.parseColorSpace01(originColor, space.XyzD50, space.ChIdentSetXYZ)
 	case "xyz-d65", "xyz":
-		return p.parseColorSpace01(originColor, space.XyzD65, space.ChIdentFlagsXYZ)
+		return p.parseColorSpace01(originColor, space.XyzD65, space.ChIdentSetXYZ)
 	case "xyz-abs-d65":
-		return p.parseColorSpace01(originColor, space.XyzAbsD65, space.ChIdentFlagsXYZ)
+		return p.parseColorSpace01(originColor, space.XyzAbsD65, space.ChIdentSetXYZ)
 	case "xyy-d50":
-		return p.parseColorSpace01(originColor, space.XyYD50, space.ChIdentFlagsXYLuminance)
+		return p.parseColorSpace01(originColor, space.XyYD50, space.ChIdentSetXYLuminance)
 	case "xyy-d65", "xyy":
-		return p.parseColorSpace01(originColor, space.XyYD65, space.ChIdentFlagsXYLuminance)
+		return p.parseColorSpace01(originColor, space.XyYD65, space.ChIdentSetXYLuminance)
 	case "lab-d65":
 		return p.parseLabLike(originColor, space.LabD65, 100, 125)
 	case "lch-d65":
@@ -62,6 +63,9 @@ func (p *parser) parseColorSpace(originColor Color) (Color, error) {
 	case "lchuv-d65":
 		return p.parseLchLike(originColor, space.LchuvD65, 100, 220)
 	default:
-		return Color{}, errUnknownColorSpace
+		p.setErr(errInvalidColor)
+		p.setErrMsg("unknown color space")
+		p.setErrTextAt(start, end)
+		return Color{}, p.fail()
 	}
 }
