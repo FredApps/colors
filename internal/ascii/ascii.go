@@ -23,12 +23,11 @@ func EqualFold(s, t string) bool {
 	return len(s) == len(t)
 }
 
+// ToLowerBytes lowercases ASCII letters of b in place.
 func ToLowerBytes(b []byte) {
-	for i := range b {
-		c := b[i]
-		if 'A' <= c && c <= 'Z' {
-			c += 'a' - 'A'
-			b[i] = c
+	for i, c := range b {
+		if c-'A' <= 'Z'-'A' {
+			b[i] = c | ('a' - 'A')
 		}
 	}
 }
