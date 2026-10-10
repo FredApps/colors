@@ -263,4 +263,21 @@ More examples are available in the [`examples`](./examples) directory.
 
 ## Development
 
+Run the package tests and vet checks with the default build and each LUT build tag:
+
+```sh
+go test ./...
+go vet ./...
+for tag in colors_full static st; do
+    go test -tags="$tag" ./...
+    go vet -tags="$tag" ./...
+done
+```
+
+Regenerate the source with `go generate ./gen`. To also regenerate the lookup
+tables, run `GEN_LUT=1 go generate ./gen` (or `sh gen.sh all`). The generator's
+internal sRGB bootstrap tables use the same runtime-initialization template as
+the public `convert` package, but always build without tag constraints so the
+generator can compile with `colors_full`, `static`, or `st` enabled.
+
 AI tools are used for research, problem solving, including advanced topics in color science and rendering.

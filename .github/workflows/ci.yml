@@ -1,0 +1,32 @@
+name: Go
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Go ${{ matrix.go }} / ${{ matrix.tags || 'default' }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ['1.22.x', 'stable']
+        tags: ['', 'colors_full', 'static', 'st']
+    env:
+      GOTOOLCHAIN: local
+      BUILD_TAGS: ${{ matrix.tags }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ matrix.go }}
+      - name: Test all packages
+        run: go test -tags="$BUILD_TAGS" ./...
+      - name: Vet all packages
+        run: go vet -tags="$BUILD_TAGS" ./...
