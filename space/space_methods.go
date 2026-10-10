@@ -30,9 +30,9 @@ func (s Space) CoordinateSystem() CoordinateSystem {
 	return spaceCoordinateSystems[s]
 }
 
-// Info returns information about the color space.
+// Info returns information about the color space, or nil if s is invalid.
 func (s Space) Info() SpaceInfo {
-	if uint(s) >= uint(len(spaceInfos)) {
+	if !s.IsValid() {
 		return nil
 	}
 	return spaceInfos[s]
