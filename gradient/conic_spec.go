@@ -90,13 +90,14 @@ func (s *ConicSpec) Build() (Conic, error) {
 	cx := s.centerX * s.width
 	cy := s.centerY * s.height
 
+	// Measure the angle relative to the center in untransformed coordinates.
 	c.dx0 = inv.m00
 	c.dx1 = inv.m01
-	c.dx2 = inv.tx - inv.m00*cx - inv.m01*cy
+	c.dx2 = inv.tx - cx
 
 	c.dy0 = inv.m10
 	c.dy1 = inv.m11
-	c.dy2 = inv.ty - inv.m10*cx - inv.m11*cy
+	c.dy2 = inv.ty - cy
 
 	c.startAngle = s.startAngle - math.Floor(s.startAngle)
 

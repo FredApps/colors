@@ -73,6 +73,7 @@ func (s *RadialSpec) SetCenter(x, y float64) {
 }
 
 // SetRadius sets the horizontal and vertical radii of the gradient in normalized units.
+// A value of 1 is half the corresponding dimension of the gradient.
 func (s *RadialSpec) SetRadius(x, y float64) {
 	s.radiusX = x
 	s.radiusY = y
@@ -93,11 +94,12 @@ func (s *RadialSpec) SetRadiusPixel(rx, ry float64) {
 }
 
 // SetCircleRadius sets the radius of a circular gradient in normalized units.
+// A value of 1 is half the smaller dimension of the gradient.
+// The radius is resolved using the current size when building or querying pixels.
 func (s *RadialSpec) SetCircleRadius(radius float64) {
-	r := radius * min(s.width, s.height) * half
-	s.radiusX = r
-	s.radiusY = r
-	s.radiusFixed = true
+	s.radiusX = radius
+	s.radiusY = radius
+	s.radiusFixed = false
 
 	s.shape = RadialCircle
 	s.sizeMode = RadialExplicit
@@ -145,18 +147,30 @@ func (s *RadialSpec) Center() (x, y float64) {
 	return s.centerX, s.centerY
 }
 
-// Radius returns the horizontal and vertical radii of the gradient in normalized units.
+// Radius returns the explicitly configured horizontal and vertical radii.
+// The values are in normalized units unless a pixel radius setter was used.
 func (s *RadialSpec) Radius() (x, y float64) {
 	return s.radiusX, s.radiusY
 }
 
 // RadiusPixel returns the horizontal and vertical radii of the gradient in pixels.
+// It uses the current size, center, shape and size mode, before any transformation.
 func (s *RadialSpec) RadiusPixel() (x, y float64) {
+	if s.sizeMode != RadialExplicit {
+		return resolveRadialRadius(s.sizeMode, s.shape,
+			s.centerX*s.width, s.centerY*s.height, s.width, s.height)
+	}
+
 	if s.radiusFixed {
 		return s.radiusX, s.radiusY
 	}
 
-	return s.radiusX * s.width, s.radiusY * s.height
+	if s.shape == RadialCircle {
+		scale := min(s.width, s.height) * half
+		return s.radiusX * scale, s.radiusY * scale
+	}
+
+	return s.radiusX * (s.width * half), s.radiusY * (s.height * half)
 }
 
 // Shape returns the shape of the gradient.
@@ -175,6 +189,8 @@ func (s *RadialSpec) Focal() (x, y float64, ok bool) {
 }
 
 // Build creates a [Radial] gradient from the specification.
+// A nonpositive radius, including a collapsed closest-side or closest-corner
+// ellipse centered on an edge of the gradient box, returns ErrInvalidRadius.
 func (s *RadialSpec) Build() (Radial, error) {
 	if s.radial == nil {
 		s.radial = new(Radial)
@@ -194,14 +210,7 @@ func (s *RadialSpec) Build() (Radial, error) {
 	cx := s.centerX * s.width
 	cy := s.centerY * s.height
 
-	rx, ry := s.radiusX, s.radiusY
-
-	if s.sizeMode != RadialExplicit {
-		rx, ry = resolveRadialRadius(s.sizeMode, s.shape, cx, cy, s.width, s.height)
-	} else if !s.radiusFixed {
-		rx *= s.width * half
-		ry *= s.height * half
-	}
+	rx, ry := s.RadiusPixel()
 
 	if !isFinite(rx) || !isFinite(ry) || rx <= 0 || ry <= 0 {
 		return Radial{}, ErrInvalidRadius
@@ -296,27 +305,20 @@ func circleRadius(size RadialSizeMode, cx, cy float64, width, height float64) (r
 }
 
 func ellipseRadii(size RadialSizeMode, cx, cy float64, width, height float64) (rx, ry float64) {
+	left, right := math.Abs(cx), math.Abs(width-cx)
+	top, bottom := math.Abs(cy), math.Abs(height-cy)
+
 	switch size {
 	case RadialFarthestCorner:
-		aspect := width / height
-
-		dx := max(cx, width-cx)
-		dy := max(cy, height-cy)
-
-		ry = math.Hypot(dx/aspect, dy)
-		rx = ry * aspect
+		// Preserve the farthest-side aspect ratio and expand to the corner.
+		// Multiplying both axes avoids dividing by a possibly zero side radius.
+		rx, ry = max(left, right)*math.Sqrt2, max(top, bottom)*math.Sqrt2
 	case RadialClosestCorner:
-		aspect := width / height
-
-		dx := min(cx, width-cx)
-		dy := min(cy, height-cy)
-
-		ry = math.Hypot(dx/aspect, dy)
-		rx = ry * aspect
+		rx, ry = min(left, right)*math.Sqrt2, min(top, bottom)*math.Sqrt2
 	case RadialFarthestSide:
-		rx, ry = max(cx, width-cx), max(cy, height-cy)
+		rx, ry = max(left, right), max(top, bottom)
 	case RadialClosestSide:
-		rx, ry = min(cx, width-cx), min(cy, height-cy)
+		rx, ry = min(left, right), min(top, bottom)
 	}
 	return
 }

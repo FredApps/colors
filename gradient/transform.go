@@ -113,10 +113,10 @@ func (t *Transform) Skew(angleX, angleY float64) {
 	m10 := t.m10
 	m11 := t.m11
 
-	t.m00 = m00 + m01*kx
-	t.m01 = m00*ky + m01
-	t.m10 = m10 + m11*kx
-	t.m11 = m10*ky + m11
+	t.m00 = m00 + m01*ky
+	t.m01 = m00*kx + m01
+	t.m10 = m10 + m11*ky
+	t.m11 = m10*kx + m11
 }
 
 // Matrix sets the transformation matrix to the specified values.
