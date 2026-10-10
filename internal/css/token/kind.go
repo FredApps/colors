@@ -2,10 +2,10 @@ package token
 
 type Kind uint8
 
-//go:generate stringer -type Kind -linecomment kind.go
+//go:generate stringer -type Kind kind.go
 
 const (
-	_ Kind = iota
+	None Kind = iota
 
 	EOF                // <EOF-token>
 	Ident              // <ident-token>
@@ -21,21 +21,17 @@ const (
 	Percentage         // <percentage-token>
 	Dimension          // <dimension-token>
 	Whitespace         // <whitespace-token>
+	Comment            // <comment-token>
 	CDO                // <CDO-token>
 	CDC                // <CDC-token>
 	Colon              // <colon-token>
 	Semicolon          // <semicolon-token>
 	Comma              // <comma-token>
-	OpenSquareBracket  // <[-token>
-	CloseSquareBracket // <]-token>
 	OpenParenthesis    // <(-token>
-	CloseParenthesis   // <)-token>
+	OpenSquareBracket  // <[-token>
 	OpenCurlyBracket   // <{-token>
+	CloseParenthesis   // <)-token>
+	CloseSquareBracket // <]-token>
 	CloseCurlyBracket  // <}-token>
 	// UnicodeRange       // <unicode-range-token>
-	// Comment       // <comment-token>
 )
-
-func (k Kind) Is(other Kind) bool {
-	return k == other
-}

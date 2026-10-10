@@ -2,18 +2,17 @@ package tokenizer
 
 import (
 	"strconv"
-	"unicode/utf8"
 
 	"github.com/thmalt/colors/internal/ascii"
 	"github.com/thmalt/colors/internal/css/token"
-	"github.com/thmalt/colors/internal/hexlut"
 )
 
 type Tokenizer struct {
 	source
 
-	tok token.Token
 	buf []byte
+	tok token.Token
+	st  state
 }
 
 func New(text string) Tokenizer {
@@ -22,139 +21,275 @@ func New(text string) Tokenizer {
 	return t
 }
 
+func (t *Tokenizer) init(text string) {
+	t.source.init(text)
+	t.tok = token.Token{}
+	t.st = state{}
+}
+
 func (t *Tokenizer) Init(text string) {
 	t.init(text)
 }
 
-func (t *Tokenizer) Token() token.Token {
-	return t.tok
+func (t *Tokenizer) State() State { return t.st }
+
+func (t *Tokenizer) Reset(st State) {
+	t.st = st
+	t.reset(st)
+	t.next()
 }
 
-func (t *Tokenizer) init(text string) {
-	t.source.init(text)
-	t.tok = token.Token{}
+// Token position
+
+func (t *Tokenizer) TokenStart() uint { return t.st.pos }
+func (t *Tokenizer) TokenEnd() uint   { return t.pos }
+func (t *Tokenizer) Segment() string  { return t.SegmentAt(t.TokenStart(), t.TokenEnd()) }
+
+// Token access
+
+func (t *Tokenizer) Token() token.Token { return t.tok }
+func (t *Tokenizer) Kind() token.Kind   { return t.tok.Kind }
+func (t *Tokenizer) Text() string       { return t.tok.Text }
+func (t *Tokenizer) Number() float64    { return t.tok.Number }
+func (t *Tokenizer) Delim() byte        { return t.tok.Delim }
+func (t *Tokenizer) Flags() token.Flags { return t.tok.Flags }
+
+func (t *Tokenizer) IsBlockStart() bool { return t.tok.IsBlockStart() }
+
+// CloneText makes t.Text independent of the input (idempotent).
+func (t *Tokenizer) CloneText() string { return t.tok.CloneText() }
+
+// Unit returns the unit of the current Dimension token.
+// Precondition: Kind() == token.Dimension.
+func (t *Tokenizer) Unit() string { return t.tok.Text }
+
+func (t *Tokenizer) Is(kind token.Kind) bool { return t.tok.Kind == kind }
+
+// IsIdent reports whether the current token is an [token.Ident] whose text equals name,
+// ASCII case-insensitively. name must be lowercase.
+func (t *Tokenizer) IsIdent(name string) bool {
+	return t.tok.Kind == token.Ident && ascii.EqualFold(t.tok.Text, name)
 }
 
-func (t *Tokenizer) kind(kind token.Kind) {
-	t.tok.Kind = kind
+// IsFunction reports whether the current token is an [token.Function] whose text equals name,
+// ASCII case-insensitively. name must be lowercase.
+func (t *Tokenizer) IsFunction(name string) bool {
+	return t.tok.Kind == token.Function && ascii.EqualFold(t.tok.Text, name)
 }
 
-func (t *Tokenizer) flags(flags token.Flags) {
-	t.tok.Flags |= flags
+func (t *Tokenizer) IsDelim(delim byte) bool {
+	return t.tok.Kind == token.Delim && t.tok.Delim == delim
 }
 
-func (t *Tokenizer) text(text string) {
-	t.tok.Text = text
-}
-
-func (t *Tokenizer) delim() {
-	t.tok.Delim = t.at(t.b)
-	t.kind(token.Delim)
-}
+// Advancing
 
 func (t *Tokenizer) Next() {
-	t.skipWhitespace()
+	t.skipWhitespaceAndComments()
 	t.next()
 }
 
 func (t *Tokenizer) NextIncludingWhitespace() {
+	for t.ch == '/' && t.hasAtLeast(1) && t.byteAt(1) == '*' {
+		t.advance(2)
+		t.skipComment()
+	}
 	t.next()
 }
 
+func (t *Tokenizer) NextIncludingWhitespaceAndComments() {
+	t.next()
+}
+
+// Matching
+
+func (t *Tokenizer) NextIf(kind token.Kind) bool {
+	if t.tok.Kind == kind {
+		t.Next()
+		return true
+	}
+	return false
+}
+
+func (t *Tokenizer) NextIfIdent(name string) bool {
+	if t.tok.Kind == token.Ident && ascii.EqualFold(t.tok.Text, name) {
+		t.Next()
+		return true
+	}
+	return false
+}
+
+func (t *Tokenizer) NextIfFunction(name string) bool {
+	if t.tok.Kind == token.Function && ascii.EqualFold(t.tok.Text, name) {
+		t.Next()
+		return true
+	}
+	return false
+}
+
+func (t *Tokenizer) NextIfDelim(delim byte) bool {
+	if t.tok.Kind == token.Delim && t.tok.Delim == delim {
+		t.Next()
+		return true
+	}
+	return false
+}
+
+// Block handling
+
+func (t *Tokenizer) BlockEnd() uint {
+	switch t.tok.Kind {
+	case token.CloseParenthesis, token.CloseSquareBracket, token.CloseCurlyBracket:
+		return t.TokenEnd()
+	case token.Function, token.OpenParenthesis,
+		token.OpenSquareBracket, token.OpenCurlyBracket:
+		return t.endBlock(t.TokenEnd(), true)
+	default:
+		return t.endBlock(t.TokenEnd(), false)
+	}
+}
+
+func (t *Tokenizer) skipBlock() (end uint) {
+	end = t.BlockEnd()
+	t.seek(end)
+	return
+}
+
+// SkipBlock scans to the end of the current block and returns its end position.
+// The current token becomes stale; call Next* to continue tokenization.
+func (t *Tokenizer) SkipBlock() (end uint) {
+	end = t.skipBlock()
+	t.tok = token.Token{}
+	t.st = t.source.state
+	return
+}
+
+// SkipBlockNext skips the current block and advances to the next significant token,
+// skipping whitespace and comments. It returns the end position of the block,
+// before any following whitespace or comments.
+func (t *Tokenizer) SkipBlockNext() (end uint) {
+	end = t.skipBlock()
+	t.Next()
+	return
+}
+
+// Token setters
+
+func (t *Tokenizer) setKind(kind token.Kind) {
+	t.tok.Kind = kind
+}
+
+func (t *Tokenizer) setFlags(flags token.Flags) {
+	t.tok.Flags |= flags
+}
+
+func (t *Tokenizer) clearFlags(flags token.Flags) {
+	t.tok.Flags &^= flags
+}
+
+func (t *Tokenizer) setText(text string) {
+	t.tok.Text = text
+}
+
+func (t *Tokenizer) setDelim(delim byte) {
+	t.tok.Delim = delim
+	t.setKind(token.Delim)
+}
+
+// Token scanning
+
 func (t *Tokenizer) next() {
 	t.tok = token.Token{}
+	t.st = t.source.state
 
-redo:
-	t.start()
-
-	switch t.ch {
-	case ' ', '\t':
-		t.consumeWhitespace(false)
-		t.kind(token.Whitespace)
+	switch c := t.ch; c {
+	case 0:
+		// EOF
+		if t.Position() >= t.Len() {
+			t.setKind(token.EOF)
+			return
+		}
+		t.consumeIdentLike()
 		return
-	case '\n', '\f', '\r':
-		t.consumeWhitespace(true)
-		t.kind(token.Whitespace)
+
+	case ' ', '\t', '\n', '\f', '\r':
+		t.setText(t.consumeWhitespace())
+		t.setKind(token.Whitespace)
 		return
 
 	case '[':
 		t.nextch()
-		t.kind(token.OpenSquareBracket)
+		t.setKind(token.OpenSquareBracket)
 		return
 	case ']':
 		t.nextch()
-		t.kind(token.CloseSquareBracket)
+		t.setKind(token.CloseSquareBracket)
 		return
 
 	case '(':
 		t.nextch()
-		t.kind(token.OpenParenthesis)
+		t.setKind(token.OpenParenthesis)
 		return
 	case ')':
 		t.nextch()
-		t.kind(token.CloseParenthesis)
+		t.setKind(token.CloseParenthesis)
 		return
 
 	case '{':
 		t.nextch()
-		t.kind(token.OpenCurlyBracket)
+		t.setKind(token.OpenCurlyBracket)
 		return
 	case '}':
 		t.nextch()
-		t.kind(token.CloseCurlyBracket)
+		t.setKind(token.CloseCurlyBracket)
 		return
 
 	case ',':
 		t.nextch()
-		t.kind(token.Comma)
+		t.setKind(token.Comma)
 		return
 	case ':':
 		t.nextch()
-		t.kind(token.Colon)
+		t.setKind(token.Colon)
 		return
 	case ';':
-		if t.eof() {
-			t.kind(token.EOF)
-			return
-		}
-
 		t.nextch()
-		t.kind(token.Semicolon)
+		t.setKind(token.Semicolon)
 		return
 
 	case '/':
 		t.nextch()
-
 		if t.ch == '*' {
 			t.nextch()
-			t.skipComment()
-			goto redo
+			t.setText(t.consumeComment())
+			t.setKind(token.Comment)
+			return
 		}
-
-		t.delim()
+		t.setDelim(c)
 		return
 
 	case '#':
 		t.nextch()
-		if t.isIdentStart() || isDigit(t.ch) {
-			t.start()
-			t.text(t.consumeName())
-			t.kind(token.Hash)
-			return
+		switch {
+		case t.isIdentStart():
+			t.setText(t.consumeName(t.Position()))
+			t.setKind(token.Hash)
+			t.setFlags(token.IsHashID)
+		case isIdentContinueLUT(t.ch):
+			t.setText(t.consumeName(t.Position()))
+			t.setKind(token.Hash)
+		default:
+			t.setDelim(c)
 		}
-
-		t.delim()
 		return
 
 	case '@':
 		t.nextch()
 		if t.isIdentStart() {
-			t.start()
-			t.text(t.consumeName())
-			t.kind(token.AtKeyword)
+			t.setText(t.consumeName(t.Position()))
+			t.setKind(token.AtKeyword)
 			return
 		}
-		t.delim()
+		t.setDelim(c)
 		return
 
 	case '\\':
@@ -163,7 +298,7 @@ redo:
 			return
 		}
 		t.nextch()
-		t.delim()
+		t.setDelim(c)
 		return
 
 	case '.':
@@ -172,59 +307,51 @@ redo:
 			t.consumeNumeric(true)
 			return
 		}
-		t.delim()
+		t.setDelim(c)
 		return
 
 	case '+':
 		t.nextch()
-
 		if isDigit(t.ch) {
-			t.flags(token.HasSign)
+			t.setFlags(token.HasSign)
 			t.consumeNumeric(false)
 			return
 		}
-		if t.ch == '.' && t.hasAtLeast(1) && isDigit(t.byteAt(1)) {
+		if t.ch == '.' && t.hasAtLeast(1) && t.hasDigitsAt(1) {
 			t.nextch()
 
-			t.flags(token.HasSign)
+			t.setFlags(token.HasSign)
 			t.consumeNumeric(true)
 			return
 		}
-
-		t.delim()
+		t.setDelim(c)
 		return
 
 	case '-':
 		t.nextch()
-
 		switch t.ch {
 		case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
 			t.nextch()
-
-			t.flags(token.HasSign)
+			t.setFlags(token.HasSign)
 			t.consumeNumeric(false)
 			return
 
 		case '.':
 			if t.hasAtLeast(1) && t.hasDigitsAt(1) {
-				t.advance(2)
-
-				t.flags(token.HasSign)
+				t.nextch()
+				t.setFlags(token.HasSign)
 				t.consumeNumeric(true)
 				return
 			}
 
 		case '-':
 			t.nextch()
-
 			if t.ch == '>' {
 				t.nextch()
-
-				t.kind(token.CDC)
+				t.setKind(token.CDC)
 				return
 			}
-
-			t.flags(token.IsCustom)
+			t.setFlags(token.IsCustom)
 			t.consumeIdentLike()
 			return
 
@@ -234,19 +361,22 @@ redo:
 				return
 			}
 		}
-
-		t.delim()
+		t.setDelim(c)
 		return
 
 	case '<':
 		t.nextch()
 		if t.hasAtLeast(2) && t.ch == '!' && t.byteAt(1) == '-' && t.byteAt(2) == '-' {
 			t.advance(3)
-			t.kind(token.CDO)
+			t.setKind(token.CDO)
 			return
 		}
+		t.setDelim(c)
+		return
 
-		t.delim()
+	case '"', '\'':
+		t.nextch()
+		t.consumeString(c)
 		return
 
 	case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
@@ -255,43 +385,31 @@ redo:
 
 	case 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
 		'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
-		'_', '\x00':
+		'_':
 		t.consumeIdentLike()
 		return
 
-	case '"', '\'':
-		t.tok.Text, t.tok.Kind = t.consumeString(t.ch)
-		return
-
 	default:
-		if t.ch >= utf8.RuneSelf {
+		if c >= 0x80 {
 			t.consumeIdentLike()
 			return
 		}
-
 		t.nextch()
-		t.delim()
+		t.setDelim(c)
 		return
 	}
 }
 
-func (t *Tokenizer) consumeWhitespace(newline bool) {
-	if newline {
-		t.skipNewline()
-	} else {
-		t.nextch()
-	}
+func (t *Tokenizer) consumeWhitespace() string {
+	start := t.Position()
+	t.skipWhitespace()
+	return t.SegmentAt(start, t.Position())
+}
 
-	for {
-		switch t.ch {
-		case ' ', '\t':
-			t.nextch()
-		case '\n', '\f', '\r':
-			t.skipNewline()
-		default:
-			return
-		}
-	}
+func (t *Tokenizer) consumeComment() string {
+	start := t.Position()
+	end := t.skipComment()
+	return t.SegmentAt(start, end)
 }
 
 func (t *Tokenizer) consumeNumeric(seenPoint bool) {
@@ -308,10 +426,11 @@ func (t *Tokenizer) consumeNumeric(seenPoint bool) {
 	}
 
 	isFloat := seenPoint
-	pos := t.position()
-	if lower(t.ch) == 'e' {
+	p := t.Position()
+
+	if t.ch|0x20 == 'e' {
 		t.nextch()
-		if isDigit(t.ch) {
+		if t.isDigit() {
 			isFloat = true
 
 			t.skipDigits()
@@ -321,11 +440,11 @@ func (t *Tokenizer) consumeNumeric(seenPoint bool) {
 			t.nextch()
 			t.skipDigits()
 		} else {
-			t.rewindTo(pos)
+			t.seek(p)
 		}
 	}
 
-	t.tok.Number, _ = strconv.ParseFloat(t.segment(), 64)
+	t.tok.Number, _ = strconv.ParseFloat(t.Segment(), 64)
 
 	if !isFloat {
 		t.tok.Flags |= token.IsInteger
@@ -334,299 +453,94 @@ func (t *Tokenizer) consumeNumeric(seenPoint bool) {
 	if t.ch == '%' {
 		t.nextch()
 		t.tok.Number *= 1 / 100.0
-		t.kind(token.Percentage)
+		t.setKind(token.Percentage)
 		return
 	}
 
 	if t.isIdentStart() {
-		t.start()
-		t.text(t.consumeName())
-		t.kind(token.Dimension)
+		t.setText(t.consumeName(t.Position()))
+		t.setKind(token.Dimension)
 		return
 	}
 
-	t.kind(token.Number)
+	t.setKind(token.Number)
 }
 
 func (t *Tokenizer) consumeIdentLike() {
-	t.text(t.consumeName())
+	t.setText(t.consumeName(t.TokenStart()))
 	if t.ch == '(' {
 		t.nextch()
 		if ascii.EqualFold(t.tok.Text, "url") {
-			t.consumeUrl()
-			return
-		}
-
-		t.kind(token.Function)
-		return
-	}
-
-	t.kind(token.Ident)
-}
-
-// TODO: Implement URL tokenization.
-func (t *Tokenizer) consumeUrl() {
-	for {
-		switch t.ch {
-		case ' ', '\t':
-			t.nextch()
-		case '\n', '\f', '\r':
-			t.skipNewline()
-		case '"', '\'':
-			t.consumeString(t.ch)
-		case '\\':
-			t.consumeEscape()
-		case ')':
-			t.nextch()
-			t.kind(token.BadUrl)
-			return
-		case ';':
-			if t.eof() {
-				t.kind(token.BadUrl)
+			if t.consumeUrl() {
+				t.clearFlags(token.IsDecoded)
 				return
 			}
 		}
+
+		t.setKind(token.Function)
+		return
 	}
+
+	t.setKind(token.Ident)
 }
 
-func (t *Tokenizer) consumeName() string {
-	for {
-		if isIdentContinueBoolLUT(t.ch) {
-			t.nextch()
-			continue
-		}
-
-		switch t.ch {
-		case '\\':
-			if !t.hasAtLeast(1) {
-				t.buf = append(t.buf[:0], t.segment()...)
-				t.buf = utf8.AppendRune(t.buf, utf8.RuneError)
-
-				t.nextch()
-				return string(t.buf)
-			}
-
-			if t.hasNewlineAt(1) {
-				return t.segment()
-			}
-
-			t.buf = append(t.buf[:0], t.segment()...)
-			t.nextch()
-
-			if r := t.consumeEscape(); r >= 0 {
-				t.buf = utf8.AppendRune(t.buf, r)
-			}
-		case '\x00':
-			t.buf = append(t.buf[:0], t.segment()...)
-			t.buf = utf8.AppendRune(t.buf, utf8.RuneError)
-			t.nextch()
-		default:
-			return t.segment()
-		}
-
-		break
+func (t *Tokenizer) consumeName(start uint) string {
+	var text string
+	text, t.buf = t.scanName(t.buf[:0], start)
+	if len(t.buf) > 0 {
+		t.setFlags(token.IsDecoded)
 	}
-
-	for {
-		if isIdentContinueBoolLUT(t.ch) {
-			t.buf = append(t.buf, t.ch)
-
-			t.nextch()
-			continue
-		}
-
-		switch t.ch {
-		case '\\':
-			if !t.hasAtLeast(1) {
-				t.buf = utf8.AppendRune(t.buf, utf8.RuneError)
-				return string(t.buf)
-			}
-
-			if t.hasNewlineAt(1) {
-				return string(t.buf)
-			}
-
-			t.nextch()
-
-			if r := t.consumeEscape(); r >= 0 {
-				t.buf = utf8.AppendRune(t.buf, r)
-			}
-
-		case '\x00':
-			t.nextch()
-			t.buf = utf8.AppendRune(t.buf, utf8.RuneError)
-
-		default:
-			return string(t.buf)
-		}
-	}
+	return text
 }
 
-func (t *Tokenizer) consumeEscape() rune {
-	switch {
-	case t.eof():
-		return utf8.RuneError
+func (t *Tokenizer) consumeString(quote byte) bool {
+	var (
+		text string
+		ok   bool
+	)
 
-	case isHex(t.ch):
-		r := rune(hexlut.Dec[t.ch])
-		t.nextch()
+	text, t.buf, ok = t.scanString(t.buf[:0], quote)
+	t.setText(text)
 
-		for range 5 {
-			if !isHex(t.ch) {
-				break
-			}
-
-			r = r<<4 | rune(hexlut.Dec[t.ch])
-
-			t.nextch()
-		}
-
-		switch t.ch {
-		case ' ', '\t':
-			t.nextch()
-		case '\n', '\f', '\r':
-			t.skipNewline()
-		}
-
-		switch {
-		case r == 0, r > utf8.MaxRune:
-			return utf8.RuneError
-		case 0xD800 <= r && r <= 0xDFFF:
-			return utf8.RuneError
-		default:
-			return r
-		}
-
-	case t.ch == '\x00':
-		return utf8.RuneError
-
-	default:
-		r := rune(t.ch)
-		t.nextch()
-		return r
+	if len(t.buf) > 0 {
+		t.setFlags(token.IsDecoded)
 	}
+
+	if ok {
+		t.setKind(token.String)
+	} else {
+		t.setKind(token.BadString)
+	}
+
+	return ok
 }
 
-var stringSpecialLUT = [256]bool{
-	'\x00': true,
-	'\\':   true,
-	'\n':   true,
-	'\r':   true,
-	'\f':   true,
-	'\'':   true,
-	'"':    true,
-	';':    true, // eof check
-}
+// consumeUrl returns true if it emitted a Url or BadUrl token,
+// false if the url has a quoted argument (caller emits Function).
+func (t *Tokenizer) consumeUrl() (isFunc bool) {
+	p := t.wsEnd()
 
-func (t *Tokenizer) consumeString(quote byte) (string, token.Kind) {
-	t.nextch()
-	t.start()
+	if p < t.Len() && (t.at(p) == '"' || t.at(p) == '\'') {
+		return false
+	}
+	t.seek(p)
 
-	for {
-		if !stringSpecialLUT[t.ch] {
-			t.nextch()
-			continue
-		}
+	var (
+		text string
+		ok   bool
+	)
 
-		switch t.ch {
-		case '"', '\'':
-			if t.ch == quote {
-				text := t.segment()
-				t.nextch()
-				return text, token.String
-			}
-			t.nextch()
-			continue
+	text, t.buf, ok = t.scanUrl(t.buf[:0])
+	t.setText(text)
 
-		case '\n', '\f', '\r':
-			text := t.segment()
-			t.skipNewline()
-			return text, token.BadString
-
-		case '\\':
-			pos := t.position()
-			t.nextch()
-
-			if t.eof() {
-				return t.segmentTo(pos), token.String
-			}
-
-			if t.isNewline() {
-				t.skipNewline()
-
-				if t.eof() || t.ch == quote {
-					return t.segmentTo(pos), token.String
-				}
-
-				t.buf = append(t.buf[:0], t.segmentTo(pos)...)
-				break
-			}
-
-			t.buf = append(t.buf[:0], t.segmentTo(pos)...)
-			if r := t.consumeEscape(); r >= 0 {
-				t.buf = utf8.AppendRune(t.buf, r)
-			}
-
-		case '\x00':
-			t.buf = append(t.buf[:0], t.segment()...)
-			t.buf = utf8.AppendRune(t.buf, utf8.RuneError)
-			t.nextch()
-
-		case ';':
-			if t.eof() {
-				return t.segment(), token.String
-			}
-			t.nextch()
-			continue
-		}
-
-		break
+	if !ok {
+		t.setKind(token.BadUrl)
+		return true
 	}
 
-	for {
-		if !stringSpecialLUT[t.ch] {
-			t.buf = append(t.buf, t.ch)
-			t.nextch()
-			continue
-		}
-
-		switch t.ch {
-		case '\n', '\f', '\r':
-			t.nextch()
-			return string(t.buf), token.BadString
-
-		case '"', '\'':
-			if t.ch == quote {
-				t.nextch()
-				return string(t.buf), token.String
-			}
-
-			t.buf = append(t.buf, t.ch)
-			t.nextch()
-
-		case '\\':
-			t.nextch()
-			if t.eof() {
-				return string(t.buf), token.String
-			}
-
-			if t.isNewline() {
-				t.skipNewline()
-			} else if r := t.consumeEscape(); r >= 0 {
-				t.buf = utf8.AppendRune(t.buf, r)
-			}
-
-		case '\x00':
-			t.nextch()
-			t.buf = utf8.AppendRune(t.buf, utf8.RuneError)
-
-		case ';':
-			if t.eof() {
-				return string(t.buf), token.String
-			}
-
-			t.buf = append(t.buf, t.ch)
-			t.nextch()
-		}
+	if len(t.buf) > 0 {
+		t.setFlags(token.IsDecoded)
 	}
+	t.setKind(token.Url)
+	return true
 }
