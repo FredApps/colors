@@ -98,16 +98,32 @@ func (e *parseError) Unwrap() error {
 func Parse(s string) (Color, error) {
 	var p parser
 	p.init(s)
-	p.next()
-	return p.parseColor()
+	return p.parse()
 }
 
 // ParseBytes parses a CSS color value from b.
 func ParseBytes(b []byte) (Color, error) {
 	var p parser
 	p.initBytes(b)
+	return p.parse()
+}
+
+// parse requires a single complete color value. Nested colors call
+// parseColor directly so their enclosing function consumes what follows.
+func (p *parser) parse() (Color, error) {
 	p.next()
-	return p.parseColor()
+	c, err := p.parseColor()
+	if err != nil {
+		return Color{}, err
+	}
+	if !p.t.Is(token.EOF) {
+		start := p.t.TokenStart()
+		p.setErr(errInvalidSyntax)
+		p.setErrMsg("unexpected trailing input")
+		p.setErrTextAt(start, p.t.Len())
+		return Color{}, p.fail()
+	}
+	return c, nil
 }
 
 type parser struct {
