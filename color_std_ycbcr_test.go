@@ -79,3 +79,41 @@ func TestNYCbCrAImportsPreserveClippedStraightColorAndAlpha(t *testing.T) {
 		}
 	}
 }
+
+func TestYCbCrNilPointersReturnZeroColor(t *testing.T) {
+	cases := []struct {
+		name string
+		got  colors.Color
+	}{
+		{"YCbCr", colors.FromStd((*color.YCbCr)(nil))},
+		{"NYCbCrA", colors.FromStd((*color.NYCbCrA)(nil))},
+		{"YCbCr linear", colors.FromStdToLinear((*color.YCbCr)(nil))},
+		{"NYCbCrA linear", colors.FromStdToLinear((*color.NYCbCrA)(nil))},
+	}
+	for _, tc := range cases {
+		if tc.got != (colors.Color{}) {
+			t.Errorf("%s nil pointer = %v; want zero Color", tc.name, tc.got)
+		}
+	}
+}
+
+func TestYCbCrLinearImportsMatchStandardRGBA(t *testing.T) {
+	for _, src := range []color.YCbCr{{Y: 0, Cb: 255, Cr: 255}, {Y: 255, Cb: 0, Cr: 0}, {Y: 127, Cb: 127, Cr: 127}, {Y: 64, Cb: 192, Cr: 128}} {
+		r, g, b, _ := src.RGBA()
+		want := colors.FromStdToLinear(color.NRGBA64{R: uint16(r), G: uint16(g), B: uint16(b), A: 0xffff})
+		for _, got := range []colors.Color{colors.FromStdToLinear(src), colors.FromStdToLinear(&src), colors.StdYCbCrToLinear(src)} {
+			if got != want {
+				t.Fatalf("YCbCr%v linear = %v; want %v", src, got, want)
+			}
+		}
+		for _, alpha := range []uint8{0, 128, 255} {
+			n := color.NYCbCrA{YCbCr: src, A: alpha}
+			wantA := colors.FromStdToLinear(color.NRGBA64{R: uint16(r), G: uint16(g), B: uint16(b), A: uint16(alpha) * 0x101})
+			for _, got := range []colors.Color{colors.FromStdToLinear(n), colors.FromStdToLinear(&n), colors.StdNYCbCrAToLinear(n)} {
+				if got != wantA {
+					t.Fatalf("NYCbCrA%v linear = %v; want %v", n, got, wantA)
+				}
+			}
+		}
+	}
+}

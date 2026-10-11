@@ -93,20 +93,24 @@ func FromStdToLinear[T color.Color](c T) Color {
 		return stdRGBA64ToLinear(c.R, c.G, c.B, c.A)
 
 	case color.YCbCr:
-		return stdYCbCrToLinear(c.Y, c.Cb, c.Cr)
+		R, G, B, _ := c.RGBA()
+		return stdNRGB64ToLinear(uint16(R), uint16(G), uint16(B))
 	case *color.YCbCr:
 		if c == nil {
 			return Color{}
 		}
-		return stdYCbCrToLinear(c.Y, c.Cb, c.Cr)
+		R, G, B, _ := c.RGBA()
+		return stdNRGB64ToLinear(uint16(R), uint16(G), uint16(B))
 
 	case color.NYCbCrA:
-		return stdNYCbCrAToLinear(c.Y, c.Cb, c.Cr, c.A)
+		R, G, B, _ := c.YCbCr.RGBA()
+		return stdNRGBA64ToLinear(uint16(R), uint16(G), uint16(B), uint16(c.A)*0x101)
 	case *color.NYCbCrA:
 		if c == nil {
 			return Color{}
 		}
-		return stdNYCbCrAToLinear(c.Y, c.Cb, c.Cr, c.A)
+		R, G, B, _ := c.YCbCr.RGBA()
+		return stdNRGBA64ToLinear(uint16(R), uint16(G), uint16(B), uint16(c.A)*0x101)
 	}
 
 	if isNil(c) {
@@ -181,12 +185,14 @@ func StdRGBA64ToLinear(c color.RGBA64) Color {
 
 // StdYCbCrToLinear returns a linear sRGB [Color] from a [color.YCbCr].
 func StdYCbCrToLinear(c color.YCbCr) Color {
-	return stdYCbCrToLinear(c.Y, c.Cb, c.Cr)
+	R, G, B, _ := c.RGBA()
+	return stdNRGB64ToLinear(uint16(R), uint16(G), uint16(B))
 }
 
 // StdNYCbCrAToLinear returns a linear sRGB [Color] from a [color.NYCbCrA].
 func StdNYCbCrAToLinear(c color.NYCbCrA) Color {
-	return stdNYCbCrAToLinear(c.Y, c.Cb, c.Cr, c.A)
+	R, G, B, _ := c.YCbCr.RGBA()
+	return stdNRGBA64ToLinear(uint16(R), uint16(G), uint16(B), uint16(c.A)*0x101)
 }
 
 func stdColorToLinear(R, G, B, A uint32) Color {
@@ -262,6 +268,14 @@ func stdNRGBA64ToLinear(R, G, B, A uint16) Color {
 	)
 }
 
+func stdNRGB64ToLinear(R, G, B uint16) Color {
+	return LinearSrgb(
+		convert.Srgb16Decode(R),
+		convert.Srgb16Decode(G),
+		convert.Srgb16Decode(B),
+	)
+}
+
 func stdRGBAToLinear(R, G, B, A uint8) Color {
 	if A == 0 {
 		return LinearSrgbAlpha(0, 0, 0, 0)
@@ -285,24 +299,5 @@ func stdRGBA64ToLinear(R, G, B, A uint16) Color {
 		convert.Srgb16Decode(uint16(uint32(G)*maxUint16/uint32(A))),
 		convert.Srgb16Decode(uint16(uint32(B)*maxUint16/uint32(A))),
 		float64(A)*invMaxUint16,
-	)
-}
-
-func stdYCbCrToLinear(Y, Cb, Cr uint8) Color {
-	r, g, b := color.YCbCrToRGB(Y, Cb, Cr)
-	return LinearSrgb(
-		convert.Srgb8Decode(r),
-		convert.Srgb8Decode(g),
-		convert.Srgb8Decode(b),
-	)
-}
-
-func stdNYCbCrAToLinear(Y, Cb, Cr, A uint8) Color {
-	r, g, b := color.YCbCrToRGB(Y, Cb, Cr)
-	return LinearSrgbAlpha(
-		convert.Srgb8Decode(r),
-		convert.Srgb8Decode(g),
-		convert.Srgb8Decode(b),
-		float64(A)*invMaxUint8,
 	)
 }

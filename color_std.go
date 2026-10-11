@@ -259,20 +259,24 @@ func FromStd[T color.Color](c T) Color {
 		return stdRGBA64(c.R, c.G, c.B, c.A)
 
 	case color.YCbCr:
-		return stdYCbCr(c.Y, c.Cb, c.Cr)
+		R, G, B, _ := c.RGBA()
+		return stdNRGB64(uint16(R), uint16(G), uint16(B))
 	case *color.YCbCr:
 		if c == nil {
 			return Color{}
 		}
-		return stdYCbCr(c.Y, c.Cb, c.Cr)
+		R, G, B, _ := c.RGBA()
+		return stdNRGB64(uint16(R), uint16(G), uint16(B))
 
 	case color.NYCbCrA:
-		return stdNYCbCrA(c.Y, c.Cb, c.Cr, c.A)
+		R, G, B, _ := c.YCbCr.RGBA()
+		return stdNRGBA64(uint16(R), uint16(G), uint16(B), uint16(c.A)*0x101)
 	case *color.NYCbCrA:
 		if c == nil {
 			return Color{}
 		}
-		return stdNYCbCrA(c.Y, c.Cb, c.Cr, c.A)
+		R, G, B, _ := c.YCbCr.RGBA()
+		return stdNRGBA64(uint16(R), uint16(G), uint16(B), uint16(c.A)*0x101)
 	}
 
 	if isNil(c) {
@@ -342,12 +346,14 @@ func StdRGBA64(c color.RGBA64) Color {
 
 // StdYCbCr returns a sRGB [Color] from a [color.YCbCr].
 func StdYCbCr(c color.YCbCr) Color {
-	return stdYCbCr(c.Y, c.Cb, c.Cr)
+	R, G, B, _ := c.RGBA()
+	return stdNRGB64(uint16(R), uint16(G), uint16(B))
 }
 
 // StdNYCbCrA returns a sRGB [Color] from a [color.NYCbCrA].
 func StdNYCbCrA(c color.NYCbCrA) Color {
-	return stdNYCbCrA(c.Y, c.Cb, c.Cr, c.A)
+	R, G, B, _ := c.YCbCr.RGBA()
+	return stdNRGBA64(uint16(R), uint16(G), uint16(B), uint16(c.A)*0x101)
 }
 
 func stdColor(R, G, B, A uint32) Color {
@@ -414,6 +420,14 @@ func stdNRGBA64(R, G, B, A uint16) Color {
 	return SrgbAlpha(r, g, b, a)
 }
 
+func stdNRGB64(R, G, B uint16) Color {
+	return Srgb(
+		float64(R)*invMaxUint16,
+		float64(G)*invMaxUint16,
+		float64(B)*invMaxUint16,
+	)
+}
+
 func stdRGBA(R, G, B, A uint8) Color {
 	if A == 0 {
 		return SrgbAlpha(0, 0, 0, 0)
@@ -444,23 +458,6 @@ func stdRGBA64(R, G, B, A uint16) Color {
 	a *= invMaxUint16
 
 	return SrgbAlpha(r, g, b, a)
-}
-
-func stdYCbCr(Y, Cb, Cr uint8) Color {
-	// RGBA applies image/color's clipping at 16-bit precision. Converting
-	// through YCbCrToRGB would unnecessarily quantize the channels to 8 bits.
-	r, g, b, _ := (color.YCbCr{Y: Y, Cb: Cb, Cr: Cr}).RGBA()
-	return Srgb(
-		float64(r)*invMaxUint16,
-		float64(g)*invMaxUint16,
-		float64(b)*invMaxUint16,
-	)
-}
-
-func stdNYCbCrA(Y, Cb, Cr, A uint8) Color {
-	// Decode the straight channels before applying alpha, as with NRGBA.
-	// This also retains the non-premultiplied color when alpha is zero.
-	return stdYCbCr(Y, Cb, Cr).WithAlpha(float64(A) * invMaxUint8)
 }
 
 func isNil(v any) bool {
