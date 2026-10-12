@@ -7,26 +7,25 @@ import "math"
 //	sRGB
 //	-> HSL
 func SrgbToHsl(r, g, b float64) (h, s, l float64) {
-	max := max(r, g, b)
-	min := min(r, g, b)
+	hi := max(r, g, b)
+	lo := min(r, g, b)
 
-	l = (min + max) * 0.5
+	l = (lo + hi) * 0.5
 
-	delta := max - min
+	delta := hi - lo
 	// Matrix and transfer-function roundoff can give a neutral color a few
 	// ulps of chroma. Near white, the saturation denominator magnifies that
-	// noise. Compare relative chroma before dividing by that denominator;
-	// scaling by the channel magnitude preserves very dark saturated colors.
+	// noise. Compare chroma against a tolerance scaled by the channel magnitude;
+	// this avoids a division and preserves very dark saturated colors.
 	const neutralTolerance = 32 * 0x1p-52 // 32 binary64 machine epsilons.
-	scale := math.Max(math.Abs(max), math.Abs(min))
-	if delta == 0 || delta/scale <= neutralTolerance {
+	if delta == 0 || delta <= neutralTolerance*max(math.Abs(hi), math.Abs(lo)) {
 		return 0, 0, l
 	}
 
 	if l > 0.5 {
-		s = delta / (2 - max - min)
+		s = delta / (2 - hi - lo)
 	} else {
-		s = delta / (max + min)
+		s = delta / (hi + lo)
 	}
 
 	return srgbHue(r, g, b, delta), s, l
